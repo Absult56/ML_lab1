@@ -5,6 +5,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import numpy as np
 import pandas as pd
+import src.stats_analysis as sa
+import src.windows as win
 from sklearn.preprocessing import MinMaxScaler
 
 from src.config import set_seeds, DATA_DIR
@@ -12,10 +14,10 @@ from src.io_utils import read_table, write_table, save_figure
 from src.data_loader import check_data_quality, show_table, extract_columns, cast_types
 from src.preprocess import handle_missing, to_numpy, split_train_val_test
 from src.scaling import MinMaxScalerCustom, StandardScalerCustom
-import src.stats_analysis as sa
-import src.windows as win
+
 from src.tensors import run_tensor_tasks
 from src.matrix_ops import run_matrix_tasks
+from src.image_proc import run_task50
 
 
 def main():
@@ -161,6 +163,8 @@ def main():
     save_figure(m_res["pca_fig"], "task49_pca_variance")
 
     print("\n=== Все задания (1–49) выполнены успешно! ===")
+
+    run_task50("D:\projects\python\ML_lab1\data\data.jpg")
 
 
 if __name__ == "__main__":
