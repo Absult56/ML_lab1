@@ -2,12 +2,15 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import src.stats_analysis as sa
+import src.windows as win
 
 from src.config import set_seeds, DATA_DIR, OUTPUT_DIR
 from src.io_utils import read_table, write_table, save_figure
 from src.data_loader import check_data_quality, show_table, extract_columns, cast_types
 from src.preprocess import handle_missing, to_numpy, split_train_val_test
 from src.scaling import MinMaxScalerCustom, StandardScalerCustom
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 def main():
     print("=== Запуск проверки заданий 1–7 ===")
@@ -107,6 +110,78 @@ def main():
     print("\n--- Задание 12. Разбиение Train / Val / Test (70/15/15) ---")
     train, val, test = split_train_val_test(X, ratios=(70, 15, 15), percent=True)
     print(f"Размеры выборок: Train={train.shape}, Val={val.shape}, Test={test.shape}")
+
+    # === РАЗДЕЛ 3: СТАТИСТИКА И СИГНАЛЫ (Задания 14–37) ===
+    print("\n--- Задания 14-17. Построение графиков и ECDF ---")
+    fig14 = sa.plot_series(X, col_names=selected_cols, title="График признаков")
+    save_figure(fig14, "task14_series")
+
+    col_x1 = X[:, 0]
+    col_x2 = X[:, 1]
+
+    fig15 = sa.plot_histogram(col_x1, bins=25, title=f"Гистограмма {selected_cols[0]}")
+    save_figure(fig15, "task15_hist")
+
+    fig17 = sa.plot_ecdf(col_x1, title=f"ECDF {selected_cols[0]}")
+    save_figure(fig17, "task17_ecdf")
+
+    print("\n--- Задания 18-19. Статистика и доверительные интервалы ---")
+    st = sa.column_stats(col_x1)
+    print(f"Статистики {selected_cols[0]}: Среднее={st['mean']:.4f}, Дисперсия={st['var']:.4f}, Мода={st['mode']}, Медиана={st['median']:.4f}")
+    
+    ci_m = sa.ci_mean(col_x1)
+    ci_v = sa.ci_var(col_x1)
+    print(f"Доверительный интервал 95% для среднего: ({ci_m[0]:.4f}, {ci_m[1]:.4f})")
+    print(f"Доверительный интервал 95% для дисперсии: ({ci_v[0]:.4f}, {ci_v[1]:.4f})")
+
+    print("\n--- Задания 20-22. Ковариация и корреляция ---")
+    cov_m, corr_m, r, p_val = sa.correlation_analysis(X, col_x1, col_x2)
+    print(f"Пирсон ({selected_cols[0]}, {selected_cols[1]}): r = {r:.4f}, p-value = {p_val:.4e}")
+
+    print("\n--- Задания 23-26. Векторные операции и нормы ---")
+    ops = sa.math_vector_ops(col_x1, col_x2)
+    print(f"Скалярное произведение: {ops['dot']:.2f}")
+    print(f"Норма L1: {ops['norm_l1']:.2f}, Норма L2: {ops['norm_l2']:.2f}")
+
+    print("\n--- Задание 27. Проверка статистических гипотез ---")
+    hyp = sa.test_distributions(col_x1, col_x2)
+    print(f"Проверка равномерности x1 (p-val): {hyp['uniform_ks_p']:.4f}")
+    print(f"Проверка нормальности x2 Шапиро (p-val): {hyp['shapiro_p']:.4f}")
+
+    print("\n--- Задания 28-30. Спектральный анализ ---")
+    fig_spec, fig_per, fig_fft = sa.plot_spectral_analysis(col_x1)
+    save_figure(fig_spec, "task28_spectrogram")
+    save_figure(fig_per, "task29_periodogram")
+    save_figure(fig_fft, "task30_fft")
+
+    # Задание 34. Сравнение собственного и sklearn-масштабирования
+    print("\n--- Задание 34. Сравнение собственного и sklearn-масштабирования ---")
+    x_test_col = col_x1.reshape(-1, 1)
+    
+    custom_mm = MinMaxScalerCustom().fit(x_test_col)
+    sk_mm = MinMaxScaler().fit(x_test_col)
+    
+    x_custom = custom_mm.transform(x_test_col)
+    x_sk = sk_mm.transform(x_test_col)
+    
+    # Проверка совпадения прямого преобразования:
+    assert np.allclose(x_custom, x_sk, atol=1e-10), "Ошибка: прямое преобразование не совпадает!"
+    print("Прямое преобразование: MinMaxScalerCustom совпадает с sklearn.MinMaxScaler (atol=1e-10).")
+
+    # Задание 35. Инверсия (восстановление исходных значений)
+    print("\n--- Задание 35. Инверсия масштабирования ---")
+    x_back_custom = custom_mm.inverse_transform(x_custom)
+    x_back_sk = sk_mm.inverse_transform(x_sk)
+
+    # Проверка точного восстановления исходных данных x:
+    assert np.allclose(x_test_col, x_back_custom, atol=1e-10), "Ошибка: кастомная инверсия не восстановила x!"
+    assert np.allclose(x_test_col, x_back_sk, atol=1e-10), "Ошибка: инверсия sklearn не восстановила x!"
+    print("Инверсия успешна: исходные данные восстановлены с точностью 1e-10.")
+
+    print("\n--- Задания 36-37. Скользящее окно и среднее ---")
+    w_matrix = win.sliding_window(col_x1, width=5)
+    ma_values = win.moving_average(col_x1, width=5)
+    print(f"Форма матрицы окон: {w_matrix.shape}, длина скользящего среднего: {len(ma_values)}")
 
 if __name__ == "__main__":
     main()
