@@ -1,0 +1,26 @@
+import os
+import random
+import numpy as np
+import tensorflow as tf
+import torch
+
+SEED = 42
+
+def set_seeds(seed: int = SEED) -> None:
+    """Фиксирует seed для всех генераторов случайных чисел."""
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+DATA_DIR = "data"
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+def timestamped_filename(base: str, ext: str) -> str:
+    """Формирует имя файла с датой и временем."""
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return os.path.join(OUTPUT_DIR, f"{base}_{ts}.{ext}")
