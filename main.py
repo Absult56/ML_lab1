@@ -6,12 +6,14 @@ import matplotlib.pyplot as plt
 from src.config import set_seeds, DATA_DIR, OUTPUT_DIR
 from src.io_utils import read_table, write_table, save_figure
 from src.data_loader import check_data_quality, show_table, extract_columns, cast_types
+from src.preprocess import handle_missing, to_numpy, split_train_val_test
+from src.scaling import MinMaxScalerCustom, StandardScalerCustom
 
 def main():
     print("=== Запуск проверки заданий 1–7 ===")
     set_seeds(42)
 
-    raw_path = os.path.join(DATA_DIR, "dataset.xlsx")
+    raw_path = os.path.join(DATA_DIR, "D:\projects\python\ML_lab1\data\dataset_var4.csv")
 
     # Если файла датасета еще нет, создаем синтетический для проверки пайплайна
     if not os.path.exists(raw_path):
@@ -55,22 +57,56 @@ def main():
     print("\n--- Задание 5. Вывод таблицы ---")
     show_table(df, n=5)
 
-    # Задание 6. Извлечение столбцов по варианту
+   # Задание 6. Извлечение столбцов по варианту (числовые признаки для анализа)
     print("\n--- Задание 6. Извлечение столбцов по варианту ---")
-    selected_cols = list(df.columns[:2])
+    # Берем целевые числовые столбцы задачи
+    selected_cols = ["x1", "x2", "x3", "y"]
     df_subset = extract_columns(df, selected_cols)
     print(f"Извлечены столбцы: {selected_cols}")
-    print(df_subset.head(2))
+    print(df_subset.head(3))
 
     # Задание 7. Явные типы данных
     print("\n--- Задание 7. Явные типы данных ---")
-    # Приводим столбец target к целочисленному типу (если он есть)
-    if "target" in df.columns:
-        df = cast_types(df, {"target": "int64"})
-        print("Тип target успешно приведен к int64:")
-        print(df.dtypes)
+    # Преобразуем x1 в float64 и category в category
+    if "category" in df.columns:
+        df["category"] = df["category"].astype("category")
+    print("Типы данных в исходном наборе:")
+    print(df.dtypes)
 
-    print("\n=== Проверка завершена без ошибок ===")
+    # Задание 8. Обработка проблем в данных
+    print("\n--- Задание 8. Обработка проблем в данных ---")
+    # 1. Столбец x1 приводим к числу (cast)
+    df_clean = handle_missing(df_subset, "x1", action="cast")
+    # 2. Столбец x2: заполняем пропуски средним арифметическим (mean)
+    df_clean = handle_missing(df_clean, "x2", action="mean")
+    # 3. Если остались пропуски в x1, заполняем средним
+    df_clean = handle_missing(df_clean, "x1", action="mean")
+    print("Данные после очистки (первые 5 строк):")
+    print(df_clean.head(5))
+    print("\nПроверка пропусков после очистки:")
+    print(df_clean.isna().sum().to_dict())
+
+    # Задание 9. Преобразование DataFrame в NumPy
+    print("\n--- Задание 9. DataFrame -> NumPy ---")
+    X = to_numpy(df_clean)
+    print(f"Массив NumPy формы {X.shape}, тип {X.dtype}")
+
+    # Задание 10 и 11. Масштабирование и обратное восстановление
+    print("\n--- Задания 10-11. Масштабирование и инверсия ---")
+    mm_scaler = MinMaxScalerCustom(a=0.0, b=1.0)
+    X_mm = mm_scaler.fit_transform(X)
+    X_restored_mm = mm_scaler.inverse_transform(X_mm)
+    print("MinMax успешно применён. Проверка инверсии:", np.allclose(X, X_restored_mm))
+
+    std_scaler = StandardScalerCustom()
+    X_std = std_scaler.fit_transform(X)
+    X_restored_std = std_scaler.inverse_transform(X_std)
+    print("StandardScaler успешно применён. Проверка инверсии:", np.allclose(X, X_restored_std))
+
+    # Задание 12. Разбиение на 3 части (Train / Val / Test)
+    print("\n--- Задание 12. Разбиение Train / Val / Test (70/15/15) ---")
+    train, val, test = split_train_val_test(X, ratios=(70, 15, 15), percent=True)
+    print(f"Размеры выборок: Train={train.shape}, Val={val.shape}, Test={test.shape}")
 
 if __name__ == "__main__":
     main()
