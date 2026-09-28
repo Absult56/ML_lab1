@@ -1,119 +1,89 @@
 import os
+# Отключение предупреждений oneDNN и C++ логов TensorFlow
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import src.stats_analysis as sa
-import src.windows as win
+from sklearn.preprocessing import MinMaxScaler
 
-from src.config import set_seeds, DATA_DIR, OUTPUT_DIR
+from src.config import set_seeds, DATA_DIR
 from src.io_utils import read_table, write_table, save_figure
 from src.data_loader import check_data_quality, show_table, extract_columns, cast_types
 from src.preprocess import handle_missing, to_numpy, split_train_val_test
 from src.scaling import MinMaxScalerCustom, StandardScalerCustom
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import src.stats_analysis as sa
+import src.windows as win
+from src.tensors import run_tensor_tasks
+from src.matrix_ops import run_matrix_tasks
+
 
 def main():
-    print("=== Запуск проверки заданий 1–7 ===")
+    print("=== ЛАБОРАТОРНАЯ РАБОТА №1. ВЫПОЛНЕНИЕ ПАЙПЛАЙНА ===")
     set_seeds(42)
 
+    # ---------------------------------------------------------
+    # РАЗДЕЛ 1: СЧИТЫВАНИЕ, ЗАПИСЬ И ПРОВЕРКА ДАННЫХ (Задания 1–7)
+    # ---------------------------------------------------------
     raw_path = os.path.join(DATA_DIR, "D:\projects\python\ML_lab1\data\dataset_var4.csv")
-
-    # Если файла датасета еще нет, создаем синтетический для проверки пайплайна
     if not os.path.exists(raw_path):
-        print(f"\n[Инфо] {raw_path} не найден. Генерируем тестовый набор данных...")
-        dummy_df = pd.DataFrame({
-            "feature_1": [1.2, 3.4, np.nan, 7.8, 9.0],
-            "feature_2": ["10", "20", "invalid_num", "40", "50"],
-            "target": [0, 1, 0, 1, 0]
-        })
-        dummy_df.to_excel(raw_path, index=False)
+        raise FileNotFoundError(f"Файл {raw_path} не найден в каталоге data/")
 
-    # Задание 1. Чтение файлов
-    print("\n--- Задание 1. Чтение файлов ---")
+    # Задание 1. Чтение файла
     df = read_table(raw_path)
-    print(f"Файл успешно прочитан. Строк: {len(df)}, Столбцов: {len(df.columns)}")
+    print(f"\n[Задание 1] Датасет загружен. Строк: {df.shape[0]}, Столбцов: {df.shape[1]}")
 
-    # Задание 2. Запись файлов
-    print("\n--- Задание 2. Запись файлов ---")
+    # Задание 2. Запись файлов во все 4 формата
     saved_paths = write_table(df, "exported_dataset")
-    for fmt, p in saved_paths.items():
-        print(f"Сохранён {fmt.upper()}: {p}")
-
-    # Задание 3. Сохранение изображений
-    print("\n--- Задание 3. Сохранение изображений ---")
-    fig, ax = plt.subplots(figsize=(6, 3))
-    ax.plot([1, 2, 3, 4], [1, 4, 9, 16], "ro-", label="y = x^2")
-    ax.set_title("Тестовый график задания 3")
-    ax.legend()
-    fig_path = save_figure(fig, "task3_check")
-    print(f"График сохранён в: {fig_path}")
+    print(f"[Задание 2] Данные сохранены в 4 формата: {list(saved_paths.keys())}")
 
     # Задание 4. Проверка данных
-    print("\n--- Задание 4. Проверка данных ---")
     report = check_data_quality(df)
-    print("Отчёт качества данных:")
-    print(f"  Пропуски: {report['missing']}")
-    print(f"  Типы: {report['dtypes']}")
-    print(f"  Нечисловые значения: {report['non_numeric']}")
+    print(f"[Задание 4] Отчет качества: пропусков по колонкам -> {report['missing']}")
 
     # Задание 5. Вывод таблицы
-    print("\n--- Задание 5. Вывод таблицы ---")
-    show_table(df, n=5)
+    print("\n[Задание 5] Первые строки датасета:")
+    show_table(df, n=3)
 
-   # Задание 6. Извлечение столбцов по варианту (числовые признаки для анализа)
-    print("\n--- Задание 6. Извлечение столбцов по варианту ---")
-    # Берем целевые числовые столбцы задачи
+    # Задание 6. Извлечение столбцов по варианту
     selected_cols = ["x1", "x2", "x3", "y"]
     df_subset = extract_columns(df, selected_cols)
-    print(f"Извлечены столбцы: {selected_cols}")
-    print(df_subset.head(3))
 
     # Задание 7. Явные типы данных
-    print("\n--- Задание 7. Явные типы данных ---")
-    # Преобразуем x1 в float64 и category в category
     if "category" in df.columns:
         df["category"] = df["category"].astype("category")
-    print("Типы данных в исходном наборе:")
-    print(df.dtypes)
 
-    # Задание 8. Обработка проблем в данных
-    print("\n--- Задание 8. Обработка проблем в данных ---")
-    # 1. Столбец x1 приводим к числу (cast)
+    # ---------------------------------------------------------
+    # РАЗДЕЛ 2: ПРЕДОБРАБОТКА ДАННЫХ (Задания 8–13)
+    # ---------------------------------------------------------
+    print("\n[Задание 8] Очистка и предобработка данных...")
     df_clean = handle_missing(df_subset, "x1", action="cast")
-    # 2. Столбец x2: заполняем пропуски средним арифметическим (mean)
     df_clean = handle_missing(df_clean, "x2", action="mean")
-    # 3. Если остались пропуски в x1, заполняем средним
     df_clean = handle_missing(df_clean, "x1", action="mean")
-    print("Данные после очистки (первые 5 строк):")
-    print(df_clean.head(5))
-    print("\nПроверка пропусков после очистки:")
-    print(df_clean.isna().sum().to_dict())
 
-    # Задание 9. Преобразование DataFrame в NumPy
-    print("\n--- Задание 9. DataFrame -> NumPy ---")
+    # Задание 9. DataFrame -> NumPy float64
     X = to_numpy(df_clean)
-    print(f"Массив NumPy формы {X.shape}, тип {X.dtype}")
+    print(f"[Задание 9] Сформирован массив NumPy X: shape = {X.shape}, dtype = {X.dtype}")
 
-    # Задание 10 и 11. Масштабирование и обратное восстановление
-    print("\n--- Задания 10-11. Масштабирование и инверсия ---")
+    # Задания 10-11. Кастомные скейлеры и обратное восстановление
     mm_scaler = MinMaxScalerCustom(a=0.0, b=1.0)
     X_mm = mm_scaler.fit_transform(X)
-    X_restored_mm = mm_scaler.inverse_transform(X_mm)
-    print("MinMax успешно применён. Проверка инверсии:", np.allclose(X, X_restored_mm))
+    assert np.allclose(X, mm_scaler.inverse_transform(X_mm)), "Ошибка инверсии MinMax!"
 
     std_scaler = StandardScalerCustom()
     X_std = std_scaler.fit_transform(X)
-    X_restored_std = std_scaler.inverse_transform(X_std)
-    print("StandardScaler успешно применён. Проверка инверсии:", np.allclose(X, X_restored_std))
+    assert np.allclose(X, std_scaler.inverse_transform(X_std)), "Ошибка инверсии Standard!"
+    print("[Задания 10-11] MinMaxScalerCustom и StandardScalerCustom протестированы с инверсией.")
 
-    # Задание 12. Разбиение на 3 части (Train / Val / Test)
-    print("\n--- Задание 12. Разбиение Train / Val / Test (70/15/15) ---")
+    # Задание 12. Разбиение выборки на 3 части (70 / 15 / 15)
     train, val, test = split_train_val_test(X, ratios=(70, 15, 15), percent=True)
-    print(f"Размеры выборок: Train={train.shape}, Val={val.shape}, Test={test.shape}")
+    print(f"[Задание 12] Выборки сформированы: Train={train.shape}, Val={val.shape}, Test={test.shape}")
 
-    # === РАЗДЕЛ 3: СТАТИСТИКА И СИГНАЛЫ (Задания 14–37) ===
-    print("\n--- Задания 14-17. Построение графиков и ECDF ---")
-    fig14 = sa.plot_series(X, col_names=selected_cols, title="График признаков")
+    # ---------------------------------------------------------
+    # РАЗДЕЛ 3: РАБОТА С ДАННЫМИ И СИГНАЛЫ (Задания 14–37)
+    # ---------------------------------------------------------
+    print("\n[Задания 14-17] Построение графиков распределения...")
+    fig14 = sa.plot_series(X, col_names=selected_cols, title="Исходные числовые признаки")
     save_figure(fig14, "task14_series")
 
     col_x1 = X[:, 0]
@@ -125,63 +95,73 @@ def main():
     fig17 = sa.plot_ecdf(col_x1, title=f"ECDF {selected_cols[0]}")
     save_figure(fig17, "task17_ecdf")
 
-    print("\n--- Задания 18-19. Статистика и доверительные интервалы ---")
+    # Задание 18. Статистики
     st = sa.column_stats(col_x1)
-    print(f"Статистики {selected_cols[0]}: Среднее={st['mean']:.4f}, Дисперсия={st['var']:.4f}, Мода={st['mode']}, Медиана={st['median']:.4f}")
-    
+    print(f"[Задание 18] Статистика {selected_cols[0]}: mean={st['mean']:.4f}, var={st['var']:.4f}, median={st['median']:.4f}")
+
+    # Задание 19. Доверительные интервалы (95%)
     ci_m = sa.ci_mean(col_x1)
     ci_v = sa.ci_var(col_x1)
-    print(f"Доверительный интервал 95% для среднего: ({ci_m[0]:.4f}, {ci_m[1]:.4f})")
-    print(f"Доверительный интервал 95% для дисперсии: ({ci_v[0]:.4f}, {ci_v[1]:.4f})")
+    print(f"[Задание 19] ДИ 95% для среднего: ({ci_m[0]:.4f}, {ci_m[1]:.4f}); для дисперсии: ({ci_v[0]:.4f}, {ci_v[1]:.4f})")
 
-    print("\n--- Задания 20-22. Ковариация и корреляция ---")
+    # Задания 20-22. Ковариация и корреляция
     cov_m, corr_m, r, p_val = sa.correlation_analysis(X, col_x1, col_x2)
-    print(f"Пирсон ({selected_cols[0]}, {selected_cols[1]}): r = {r:.4f}, p-value = {p_val:.4e}")
+    print(f"[Задания 20-22] Корреляция Пирсона ({selected_cols[0]}, {selected_cols[1]}): r={r:.4f} (p={p_val:.4e})")
 
-    print("\n--- Задания 23-26. Векторные операции и нормы ---")
+    # Задания 23-26. Векторные операции и нормы
     ops = sa.math_vector_ops(col_x1, col_x2)
-    print(f"Скалярное произведение: {ops['dot']:.2f}")
-    print(f"Норма L1: {ops['norm_l1']:.2f}, Норма L2: {ops['norm_l2']:.2f}")
+    print(f"[Задания 23-26] Норма L1={ops['norm_l1']:.2f}, Норма L2={ops['norm_l2']:.2f}, Скалярное произведение={ops['dot']:.2f}")
 
-    print("\n--- Задание 27. Проверка статистических гипотез ---")
+    # Задание 27. Проверка статистических гипотез
     hyp = sa.test_distributions(col_x1, col_x2)
-    print(f"Проверка равномерности x1 (p-val): {hyp['uniform_ks_p']:.4f}")
-    print(f"Проверка нормальности x2 Шапиро (p-val): {hyp['shapiro_p']:.4f}")
+    print(f"[Задание 27] Гипотезы: Uniform KS p={hyp['uniform_ks_p']:.4f}, Norm Shapiro p={hyp['shapiro_p']:.4f}")
 
-    print("\n--- Задания 28-30. Спектральный анализ ---")
+    # Задания 28-30. Спектральный анализ
     fig_spec, fig_per, fig_fft = sa.plot_spectral_analysis(col_x1)
     save_figure(fig_spec, "task28_spectrogram")
     save_figure(fig_per, "task29_periodogram")
     save_figure(fig_fft, "task30_fft")
 
-    # Задание 34. Сравнение собственного и sklearn-масштабирования
-    print("\n--- Задание 34. Сравнение собственного и sklearn-масштабирования ---")
+    # Задание 34. Сравнение кастомного масштабирования со sklearn
     x_test_col = col_x1.reshape(-1, 1)
-    
     custom_mm = MinMaxScalerCustom().fit(x_test_col)
     sk_mm = MinMaxScaler().fit(x_test_col)
-    
     x_custom = custom_mm.transform(x_test_col)
     x_sk = sk_mm.transform(x_test_col)
-    
-    # Проверка совпадения прямого преобразования:
-    assert np.allclose(x_custom, x_sk, atol=1e-10), "Ошибка: прямое преобразование не совпадает!"
-    print("Прямое преобразование: MinMaxScalerCustom совпадает с sklearn.MinMaxScaler (atol=1e-10).")
+    assert np.allclose(x_custom, x_sk, atol=1e-10)
+    print("[Задание 34] Кастомный MinMaxScaler совпадает со scikit-learn (atol=1e-10).")
 
-    # Задание 35. Инверсия (восстановление исходных значений)
-    print("\n--- Задание 35. Инверсия масштабирования ---")
+    # Задание 35. Инверсия масштабирования
     x_back_custom = custom_mm.inverse_transform(x_custom)
     x_back_sk = sk_mm.inverse_transform(x_sk)
+    assert np.allclose(x_test_col, x_back_custom, atol=1e-10)
+    assert np.allclose(x_test_col, x_back_sk, atol=1e-10)
+    print("[Задание 35] Инверсия масштабирования успешно восстановила x.")
 
-    # Проверка точного восстановления исходных данных x:
-    assert np.allclose(x_test_col, x_back_custom, atol=1e-10), "Ошибка: кастомная инверсия не восстановила x!"
-    assert np.allclose(x_test_col, x_back_sk, atol=1e-10), "Ошибка: инверсия sklearn не восстановила x!"
-    print("Инверсия успешна: исходные данные восстановлены с точностью 1e-10.")
-
-    print("\n--- Задания 36-37. Скользящее окно и среднее ---")
+    # Задания 36-37. Скользящее окно и среднее
     w_matrix = win.sliding_window(col_x1, width=5)
     ma_values = win.moving_average(col_x1, width=5)
-    print(f"Форма матрицы окон: {w_matrix.shape}, длина скользящего среднего: {len(ma_values)}")
+    print(f"[Задания 36-37] Матрица скользящих окон: {w_matrix.shape}, точек скользящего среднего: {len(ma_values)}")
+
+    # ---------------------------------------------------------
+    # РАЗДЕЛЫ 4-5: ТЕНЗОРЫ И МАТРИЧНЫЕ ОПЕРАЦИИ (Задания 38–49)
+    # ---------------------------------------------------------
+    print("\n[Задания 38-45] Тензорные вычисления...")
+    t_res = run_tensor_tasks(X)
+    print(f"  TF результат: {t_res['res_tf_shape']}, PyTorch результат: {t_res['res_pt_shape']}")
+    print(f"  Эквивалентность Keras Ops и PyTorch: {t_res['keras_pytorch_match']}")
+
+    print("\n[Задания 46-49] Матричные операции и PCA...")
+    m_res = run_matrix_tasks(X)
+    print(f"  Разреженная матрица CSR (NNZ): {m_res['nnz']}")
+    print(f"  Проверка обратной матрицы: {m_res['inv_check']}")
+    print(f"  Форма 3D-тензора F: {m_res['F_shape']}")
+    print(f"  PCA log-likelihood по скейлерам: {m_res['pca_results']}")
+    print(f"  Наилучший масштабировщик: {m_res['best_scaler']}")
+    save_figure(m_res["pca_fig"], "task49_pca_variance")
+
+    print("\n=== Все задания (1–49) выполнены успешно! ===")
+
 
 if __name__ == "__main__":
     main()
