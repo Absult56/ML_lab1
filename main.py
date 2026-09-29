@@ -164,6 +164,7 @@ def main():
 
     print("\n=== Все задания (1–49) выполнены успешно! ===")
 
+    print(f"Задание 50:")
     run_task50("D:\projects\python\ML_lab1\data\data.jpg")
 
 
